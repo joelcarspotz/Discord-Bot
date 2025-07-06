@@ -2,7 +2,7 @@ const Discord = require('discord.js');
 const voiceSchema = require("../../database/models/voice");
 const channelSchema = require("../../database/models/voiceChannels");
 
-module.exports = (client, oldState, newState) => {
+module.exports = async (client, oldState, newState) => {
     if (oldState.channelId == newState.channelId) {
         if (oldState.serverDeaf == false && newState.selfDeaf == true) return;
         if (oldState.serverDeaf == true && newState.selfDeaf == false) return;
@@ -20,119 +20,71 @@ module.exports = (client, oldState, newState) => {
 
     var guildID = newState.guild.id || oldState.guild.id;
 
-    voiceSchema.findOne({ Guild: guildID }, async (err, data) => {
+    try {
+        const data = await voiceSchema.findOne({ Guild: guildID });
         if (data) {
-            channelSchema.findOne({ Guild: guildID, Channel: oldState.channelId }, async (err, data2) => {
+            // Handle old channel cleanup
+            try {
+                const data2 = await channelSchema.findOne({ Guild: guildID, Channel: oldState.channelId });
                 if (data2) {
                     let channel = client.channels.cache.get(data2.Channel);
-                    let memberCount = channel.members.size;
-
-                    if (memberCount < 1 || memberCount == 0) {
-                        if (data.ChannelCount) {
-                            try {
-                                try {
-                                    data.ChannelCount -= 1;
-                                    data.save().catch(e => { });
-                                }
-                                catch { }
+                    if (channel) {
+                        let memberCount = channel.members.size;
+                        if (memberCount < 1 || memberCount == 0) {
+                            if (data.ChannelCount) {
+                                data.ChannelCount -= 1;
+                                await data.save().catch(() => {});
                             }
-                            catch { }
+                            await channelSchema.deleteOne({ Channel: oldState.channelId });
+                            await oldState.channel?.delete().catch(() => {});
                         }
-
-                        try {
-                            var remove = await channelSchema.deleteOne({ Channel: oldState.channelID });
-                            return oldState.channel.delete().catch(e => { });
-                        }
-                        catch { }
                     }
                 }
-            })
+            } catch (error) {
+                console.error("Error in voice channel cleanup:", error);
+            }
 
-            const user = await client.users.fetch(newState.id);
-            const member = newState.guild.members.cache.get(user.id);
-
+            // Handle new channel creation
             try {
-                if (newState.channel.id === data.Channel) {
-                    channelSchema.findOne({ Guild: guildID, Channel: oldState.channelId }, async (err, data2) => {
-                        if (data2) {
-                            let channel = client.channels.cache.get(data2.Channel);
-                            let memberCount = channel.members.size;
-
-                            if (memberCount < 1 || memberCount == 0) {
-                                if (data.ChannelCount) {
-                                    try {
-                                        data.ChannelCount -= 1;
-                                        data.save().catch(e => { });
-                                    }
-                                    catch { }
-                                }
-
-                                try {
-                                    var remove = await channelSchema.deleteOne({ Channel: oldState.channelId });
-                                    return oldState.channel.delete().catch(e => { });
-                                }
-                                catch { }
-                            }
-                        }
-                    })
+                if (newState.channel && newState.channel.id === data.Channel) {
+                    const user = await client.users.fetch(newState.id);
+                    const member = newState.guild.members.cache.get(user.id);
 
                     if (data.ChannelCount) {
                         data.ChannelCount += 1;
-                        data.save();
-                    }
-                    else {
+                        await data.save();
+                    } else {
                         data.ChannelCount = 1;
-                        data.save();
+                        await data.save();
                     }
 
                     let channelName = data.ChannelName;
-                    channelName = channelName.replace(`{emoji}`, "🔊")
-                    channelName = channelName.replace(`{channel name}`, `Voice ${data.ChannelCount}`)
-                    channelName = channelName.replace(`{channel count}`, `${data.ChannelCount}`)
-                    channelName = channelName.replace(`{member}`, `${user.username}`)
-                    channelName = channelName.replace(`{member tag}`, `${user.tag}`)
+                    channelName = channelName.replace(`{emoji}`, "🔊");
+                    channelName = channelName.replace(`{channel name}`, `Voice ${data.ChannelCount}`);
+                    channelName = channelName.replace(`{channel count}`, `${data.ChannelCount}`);
+                    channelName = channelName.replace(`{member}`, `${user.username}`);
+                    channelName = channelName.replace(`{member tag}`, `${user.tag}`);
 
                     const channel = await newState.guild.channels.create({
                         name: "⌛",
-                        type:  Discord.ChannelType.GuildVoice,
+                        type: Discord.ChannelType.GuildVoice,
                         parent: data.Category,
                     });
 
                     if (member.voice.setChannel(channel)) {
-                        channel.edit({ name: channelName })
+                        await channel.edit({ name: channelName });
                     }
 
-                    new channelSchema({
+                    await new channelSchema({
                         Guild: guildID,
                         Channel: channel.id,
                     }).save();
                 }
-                else {
-                    channelSchema.findOne({ Guild: guildID, Channel: oldState.channelID }, async (err, data2) => {
-                        if (data2) {
-                            let channel = client.channels.cache.get(data2.Channel);
-                            let memberCount = channel.members.size;
-
-                            if (memberCount < 1 || memberCount == 0) {
-                                if (data.ChannelCount) {
-                                    try {
-                                        data.ChannelCount -= 1;
-                                        data.save().catch(e => { });
-                                    }
-                                    catch { }
-                                }
-
-                                try {
-                                    var remove = await channelSchema.deleteOne({ Channel: oldState.channelID });
-                                    return oldState.channel.delete().catch(e => { });
-                                }
-                                catch { }
-                            }
-                        }
-                    })
-                }
+            } catch (error) {
+                console.error("Error in voice channel creation:", error);
             }
-            catch { }
         }
-    })
+    } catch (error) {
+        console.error("Error in voiceStateUpdate:", error);
+    }
 }
