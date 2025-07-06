@@ -9,7 +9,8 @@ const CommandsSchema = require("../../database/models/customCommandAdvanced");
 module.exports = async (client, interaction) => {
     // Commands
     if (interaction.isCommand() || interaction.isUserContextMenuCommand()) {
-        banSchema.findOne({ User: interaction.user.id }, async (err, data) => {
+        try {
+            const data = await banSchema.findOne({ User: interaction.user.id });
             if (data) {
                 return client.errNormal({
                     error: "You have been banned by the developers of this bot",
@@ -72,7 +73,9 @@ module.exports = async (client, interaction) => {
                     client.emit("errorCreate", err, interaction.commandName, interaction)
                 })
             }
-        })
+        } catch (error) {
+            console.error("Error in interaction handler:", error);
+        }
     }
 
     // Verify system
@@ -132,7 +135,8 @@ module.exports = async (client, interaction) => {
         var buttonID = interaction.customId.split("-");
 
         if (buttonID[0] == "reaction_button") {
-            reactionSchema.findOne({ Message: interaction.message.id }, async (err, data) => {
+            try {
+                const data = await reactionSchema.findOne({ Message: interaction.message.id });
                 if (!data) return;
 
                 const [roleid] = data.Roles[buttonID[1]];
@@ -147,46 +151,48 @@ module.exports = async (client, interaction) => {
 
                     interaction.reply({ content: `<@&${roleid}> was added!`, ephemeral: true });
                 }
-            })
+            } catch (error) {
+                console.error("Error with reaction roles:", error);
+            }
         }
     }
 
     // Reaction roles select
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId == "reaction_select") {
-            reactionSchema.findOne(
-                { Message: interaction.message.id },
-                async (err, data) => {
-                    if (!data) return;
+            try {
+                const data = await reactionSchema.findOne({ Message: interaction.message.id });
+                if (!data) return;
 
-                    let roles = "";
+                let roles = "";
 
-                    for (let i = 0; i < interaction.values.length; i++) {
-                        const [roleid] = data.Roles[interaction.values[i]];
+                for (let i = 0; i < interaction.values.length; i++) {
+                    const [roleid] = data.Roles[interaction.values[i]];
 
-                        roles += `<@&${roleid}> `;
+                    roles += `<@&${roleid}> `;
 
-                        if (interaction.member.roles.cache.get(roleid)) {
-                            interaction.guild.members.cache
-                                .get(interaction.user.id)
-                                .roles.remove(roleid)
-                                .catch((error) => { });
-                        } else {
-                            interaction.guild.members.cache
-                                .get(interaction.user.id)
-                                .roles.add(roleid)
-                                .catch((error) => { });
-                        }
+                    if (interaction.member.roles.cache.get(roleid)) {
+                        interaction.guild.members.cache
+                            .get(interaction.user.id)
+                            .roles.remove(roleid)
+                            .catch((error) => { });
+                    } else {
+                        interaction.guild.members.cache
+                            .get(interaction.user.id)
+                            .roles.add(roleid)
+                            .catch((error) => { });
+                    }
 
-                        if ((i + 1) === interaction.values.length) {
-                            interaction.reply({
-                                content: `I have updated the following roles for you: ${roles}`,
-                                ephemeral: true,
-                            });
-                        }
+                    if ((i + 1) === interaction.values.length) {
+                        interaction.reply({
+                            content: `I have updated the following roles for you: ${roles}`,
+                            ephemeral: true,
+                        });
                     }
                 }
-            );
+            } catch (error) {
+                console.error("Error with reaction roles select:", error);
+            }
         }
     }
     // Tickets

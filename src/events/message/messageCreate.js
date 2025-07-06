@@ -20,12 +20,20 @@ const fetch = require("node-fetch");
  * @returns 
  */
 module.exports = async (client, message) => {
+  // Temporarily disabled to prevent crashes from deprecated callback patterns
+  if (message.author.bot) return;
+  
+  // Basic functionality only - full features disabled temporarily
+  if (message.content === `<@${client.user.id}>` || message.content === `<@!${client.user.id}>`) {
+    return message.reply('👋 Use slash commands to interact with me! Type `/help` to get started.');
+  }
+  
+  return; // Exit early to prevent callback crashes
+  
   const dmlog = new Discord.WebhookClient({
     id: client.webhooks.dmLogs.id,
     token: client.webhooks.dmLogs.token,
   });
-
-  if (message.author.bot) return;
 
   if (message.channel.type === Discord.ChannelType.DM) {
     let embedLogs = new Discord.EmbedBuilder()
