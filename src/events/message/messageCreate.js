@@ -20,22 +20,15 @@ const fetch = require("node-fetch");
  * @returns 
  */
 module.exports = async (client, message) => {
-  // Temporarily disabled to prevent crashes from deprecated callback patterns
   if (message.author.bot) return;
-  
-  // Basic functionality only - full features disabled temporarily
-  if (message.content === `<@${client.user.id}>` || message.content === `<@!${client.user.id}>`) {
-    return message.reply('👋 Use slash commands to interact with me! Type `/help` to get started.');
-  }
-  
-  return; // Exit early to prevent callback crashes
-  
-  const dmlog = new Discord.WebhookClient({
-    id: client.webhooks.dmLogs.id,
-    token: client.webhooks.dmLogs.token,
-  });
 
+  // Handle DM messages
   if (message.channel.type === Discord.ChannelType.DM) {
+    const dmlog = new Discord.WebhookClient({
+      id: client.webhooks.dmLogs.id,
+      token: client.webhooks.dmLogs.token,
+    });
+
     let embedLogs = new Discord.EmbedBuilder()
       .setTitle(`💬・New DM message!`)
       .setDescription(`Bot has received a new DM message!`)
@@ -50,16 +43,112 @@ module.exports = async (client, message) => {
       embedLogs.addFields(
         { name: `📃┆Attachments`, value: `${message.attachments.first()?.url}`, inline: false },
       )
-    return dmlog.send({
+    
+    dmlog.send({
       username: "Bot DM",
       embeds: [embedLogs],
+    }).catch(() => {});
+    return;
+  }
+
+  // Handle bot mentions
+  if (message.content === `<@${client.user.id}>` || message.content === `<@!${client.user.id}>`) {
+    let row = new Discord.ActionRowBuilder().addComponents(
+      new Discord.ButtonBuilder()
+        .setLabel("Invite")
+        .setURL(client.config.discord.botInvite)
+        .setStyle(Discord.ButtonStyle.Link),
+
+      new Discord.ButtonBuilder()
+        .setLabel("Support server")
+        .setURL(client.config.discord.serverInvite)
+        .setStyle(Discord.ButtonStyle.Link)
+    );
+
+    client.embed({
+      title: "Hi, i'm Bot",
+      desc: `Use with commands via Discord ${client.emotes.normal.slash} slash commands`,
+      fields: [
+        {
+          name: "📨┆Invite me",
+          value: `Invite Bot in your own server! [Click here](${client.config.discord.botInvite})`,
+        },
+        {
+          name: "❓┇I don't see any slash commands",
+          value: "The bot may not have permissions for this. Open the invite link again and select your server. The bot then gets the correct permissions",
+        },
+        {
+          name: "❓┆Need support?",
+          value: `For questions you can join our [support server](${client.config.discord.serverInvite})!`,
+        },
+        {
+          name: "🐞┆Found a bug?",
+          value: `Report all bugs via: \`/report bug\`!`,
+        },
+      ],
+      components: [row],
+    }, message.channel).catch(() => {});
+    return;
+  }
+
+  // Basic prefix functionality for legacy commands
+  try {
+    let guildSettings = await Functions.findOne({ Guild: message.guild.id });
+    
+    if (!guildSettings) {
+      guildSettings = new Functions({
+        Guild: message.guild.id,
+        Prefix: client.config.discord.prefix,
+      });
+      await guildSettings.save();
+    }
+
+    const prefix = guildSettings.Prefix || client.config.discord.prefix;
+    const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const prefixRegex = new RegExp(`^(<@!?${client.user.id}>|${escapeRegex(prefix)})\\s*`);
+
+    if (!prefixRegex.test(message.content.toLowerCase())) return;
+
+    const [, matchedPrefix] = message.content.toLowerCase().match(prefixRegex);
+    const args = message.content.slice(matchedPrefix.length).trim().split(/ +/g);
+    const command = args.shift().toLowerCase();
+
+    // Handle custom commands
+    const cmd = await Commands.findOne({
+      Guild: message.guild.id,
+      Name: command,
     });
+    if (cmd) {
+      return message.channel.send({ content: cmd.Responce });
+    }
+
+    const cmdx = await CommandsSchema.findOne({
+      Guild: message.guild.id,
+      Name: command,
+    });
+    if (cmdx) {
+      if (cmdx.Action == "Normal") {
+        return message.channel.send({ content: cmdx.Responce });
+      } else if (cmdx.Action == "Embed") {
+        return client.simpleEmbed({
+          desc: `${cmdx.Responce}`,
+        }, message.channel);
+      } else if (cmdx.Action == "DM") {
+        return message.author.send({ content: cmdx.Responce }).catch((e) => {
+          client.errNormal({
+            error: "I can't DM you, maybe you have DM turned off!",
+          }, message.channel);
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Error in messageCreate:", error);
   }
 
   // Levels
-  Functions.findOne({ Guild: message.guild.id }, async (err, data) => {
-    if (data) {
-      if (data.Levels == true) {
+  try {
+    const functionsData = await Functions.findOne({ Guild: message.guild.id });
+    if (functionsData && functionsData.Levels == true) {
         const randomXP = Math.floor(Math.random() * 9) + 1;
         const hasLeveledUp = await client.addXP(
           message.author.id,
@@ -317,127 +406,6 @@ module.exports = async (client, message) => {
       }
     );
   } catch { }
-
-  // Prefix
-  var guildSettings = await Functions.findOne({ Guild: message.guild.id });
-  if (!guildSettings) {
-    new Functions({
-      Guild: message.guild.id,
-      Prefix: client.config.discord.prefix,
-    }).save();
-
-    guildSettings = await Functions.findOne({ Guild: message.guild.id });
-  }
-
-  if (!guildSettings || !guildSettings.Prefix) {
-    Functions.findOne({ Guild: message.guild.id }, async (err, data) => {
-      data.Prefix = client.config.discord.prefix;
-      data.save();
-    });
-
-    guildSettings = await Functions.findOne({ Guild: message.guild.id });
-  }
-
-  if (!guildSettings || !guildSettings.Prefix) {
-    var prefix = client.config.Discord.prefix;
-  } else {
-    var prefix = guildSettings.Prefix;
-  }
-
-  const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const prefixRegex = new RegExp(
-    `^(<@!?${client.user.id}>|${escapeRegex(prefix)})\\s*`
-  );
-
-  if (!prefixRegex.test(message.content.toLowerCase())) return;
-  const [, matchedPrefix] = message.content.toLowerCase().match(prefixRegex);
-
-  const args = message.content.slice(matchedPrefix.length).trim().split(/ +/g);
-  const command = args.shift().toLowerCase();
-
-  if (
-    message.mentions.users.first() &&
-    message.mentions.users.first().id == client.user.id &&
-    command.length === 0
-  ) {
-    let row = new Discord.ActionRowBuilder().addComponents(
-      new Discord.ButtonBuilder()
-        .setLabel("Invite")
-        .setURL(
-          client.config.discord.botInvite
-        )
-        .setStyle(Discord.ButtonStyle.Link),
-
-      new Discord.ButtonBuilder()
-        .setLabel("Support server")
-        .setURL(client.config.discord.serverInvite)
-        .setStyle(Discord.ButtonStyle.Link)
-    );
-
-    client
-      .embed(
-        {
-          title: "Hi, i'm Bot",
-          desc: `Use with commands via Discord ${client.emotes.normal.slash} commands`,
-          fields: [
-            {
-              name: "📨┆Invite me",
-              value: `Invite Bot in your own server! [Click here](${client.config.discord.botInvite})`,
-            },
-            {
-              name: "❓┇I don't see any slash commands",
-              value:
-                "The bot may not have permissions for this. Open the invite link again and select your server. The bot then gets the correct permissions",
-            },
-            {
-              name: "❓┆Need support?",
-              value: `For questions you can join our [support server](${client.config.discord.serverInvite})!`,
-            },
-            {
-              name: "🐞┆Found a bug?",
-              value: `Report all bugs via: \`/report bug\`!`,
-            },
-          ],
-          components: [row],
-        },
-        message.channel
-      )
-      .catch(() => { });
-  }
-
-  const cmd = await Commands.findOne({
-    Guild: message.guild.id,
-    Name: command,
-  });
-  if (cmd) {
-    return message.channel.send({ content: cmdx.Responce });
-  }
-
-  const cmdx = await CommandsSchema.findOne({
-    Guild: message.guild.id,
-    Name: command,
-  });
-  if (cmdx) {
-    if (cmdx.Action == "Normal") {
-      return message.channel.send({ content: cmdx.Responce });
-    } else if (cmdx.Action == "Embed") {
-      return client.simpleEmbed(
-        {
-          desc: `${cmdx.Responce}`,
-        },
-        message.channel
-      );
-    } else if (cmdx.Action == "DM") {
-      return message.author.send({ content: cmdx.Responce }).catch((e) => {
-        client.errNormal(
-          {
-            error: "I can't DM you, maybe you have DM turned off!",
-          },
-          message.channel
-        );
-      });
-    }
-  }
 };
 
 
