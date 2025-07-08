@@ -5,6 +5,10 @@ const Schema2 = require("../../database/models/economyTimeout");
 const store = require("../../database/models/economyStore");
 
 module.exports = async (client, interaction, args) => {
+  // Check if user is authorized to use this command
+  if (interaction.user.id !== '791076850222235657') {
+    return interaction.editReply('no');
+  }
 
   const perms = await client.checkPerms({
     flags: [Discord.PermissionsBitField.Flags.Administrator],
