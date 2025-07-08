@@ -5,24 +5,24 @@ module.exports = async (client, interaction, args) => {
         title: `📘・Owner information`,
         desc: `____________________________`,
         thumbnail: client.user.avatarURL({ dynamic: true, size: 1024 }),
-        fields: [{
+        fields: [        {
             name: "👑┆Owner name",
-            value: `Corwin`,
+            value: `Joel`,
             inline: true,
         },
         {
-            name: "🏷┆Discord tag",
-            value: `Corwin#0001`,
+            name: "🏷┆Discord ID",
+            value: `<@${process.env.DISCORD_ID}>`,
             inline: true,
         },
         {
             name: "🏢┆Organization",
-            value: `CoreWare`,
+            value: `Joel's Bot`,
             inline: true,
         },
         {
-            name: "🌐┆Website",
-            value: `[https://corwindev.nl](https://corwindev.nl)`,
+            name: "🌐┆Bot Status",
+            value: `Online and Running!`,
             inline: true,
         }],
         type: 'editreply'
